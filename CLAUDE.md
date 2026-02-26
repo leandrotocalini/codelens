@@ -29,7 +29,7 @@ golangci-lint run ./...
 
 ```
 cmd/codelens/main.go           — CLI entry point (cobra/pflag)
-internal/config/config.go      — Config loading: flags + .codelens.json + env vars
+internal/config/config.go      — Config loading: ~/.config/codelens/config.json + .codelens.json + flags
 internal/parser/parser.go      — Tree-sitter parsing, file walking, symbol extraction
 internal/parser/modules.go     — Language-specific module resolution
 internal/parser/symbols.go     — Symbol types: Function, Type, Import
@@ -57,11 +57,16 @@ internal/output/markdown.go    — CODELENS.md assembly
 - Interfaces defined where consumed, not where implemented
 - Context (`context.Context`) threaded through for cancellation support
 
-## Environment Variables
+## Configuration
 
-- `ANTHROPIC_API_KEY` — required when using Anthropic provider (default)
-- `OPENROUTER_API_KEY` — required when using OpenRouter provider
-- `OPENAI_API_KEY` — required when using OpenAI provider
+Two-level config system:
+
+- **Global**: `~/.config/codelens/config.json` — LLM provider, model, API key. Created once per machine.
+- **Per-repo**: `.codelens.json` at repo root — repo-specific overrides (exclude patterns, output path, model). No API keys here.
+- **Env vars**: `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY` override the global config's `apiKey` field.
+- **CLI flags** override everything.
+
+Precedence: CLI flags > env vars > per-repo config > global config > defaults.
 
 ## Testing Strategy
 

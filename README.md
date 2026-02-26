@@ -134,24 +134,55 @@ codelens [flags]
 
 Flags:
   --full              Force full re-index, ignore cache
-  --model string      LLM model (default: "claude-haiku-4-5-20251001")
-  --provider string   anthropic | openrouter | openai (default: "anthropic")
+  --model string      LLM model (overrides global config)
+  --provider string   anthropic | openrouter | openai (overrides global config)
   --output string     Output file path (default: "CODELENS.md")
   --exclude string    Comma-separated glob patterns to exclude
                       (default: "vendor,node_modules,.git,testdata,build,target")
   --max-files int     Max files per module before truncating (default: 50)
   --verbose           Show detailed progress
   --help              Show help
-
-Environment variables:
-  ANTHROPIC_API_KEY
-  OPENROUTER_API_KEY
-  OPENAI_API_KEY
 ```
 
 ## Configuration
 
-Optional .codelens.json at repo root:
+### Global Config: `~/.config/codelens/config.json`
+
+Created once per machine. Stores LLM provider settings and API keys
+so you don't repeat them in every repo.
+
+```json
+{
+  "provider": "anthropic",
+  "model": "claude-haiku-4-5-20251001",
+  "apiKey": "sk-ant-...",
+  "concurrency": 5
+}
+```
+
+On first run, if no global config exists, codelens prints setup
+instructions and exits:
+
+```
+$ codelens
+No configuration found. Create ~/.config/codelens/config.json:
+
+  {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5-20251001",
+    "apiKey": "your-api-key-here"
+  }
+
+Supported providers: anthropic, openrouter, openai
+```
+
+Environment variables `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`,
+`OPENAI_API_KEY` override the apiKey in global config if set.
+
+### Per-Repo Config: `.codelens.json` (optional)
+
+Repo-specific overrides. Lives at the repo root. Does not contain
+API keys — those come from the global config.
 
 ```json
 {
@@ -163,7 +194,13 @@ Optional .codelens.json at repo root:
 }
 ```
 
-CLI flags override config. If no config exists, defaults are used.
+### Config Precedence (highest wins)
+
+1. CLI flags
+2. Environment variables (API keys only)
+3. Per-repo `.codelens.json`
+4. Global `~/.config/codelens/config.json`
+5. Built-in defaults
 
 ## State File
 
@@ -219,17 +256,20 @@ codelens/
 │   ├── output/
 │   │   └── markdown.go        # CODELENS.md assembly
 │   └── config/
-│       └── config.go          # config loading + CLI flag merge
+│       └── config.go          # global + repo config loading + CLI flag merge
 ├── go.mod
 ├── go.sum
 └── README.md
+
+Global config: ~/.config/codelens/config.json (LLM provider + API key)
+Per-repo config: .codelens.json (repo-specific overrides, no secrets)
 ```
 
 ### Flow: First Run
 
 ```
 main
- ├─ config.Load()                    # flags + config file + env vars
+ ├─ config.Load()                    # global config + repo config + flags
  ├─ parser.Parse(repoRoot)           # tree-sitter -> []Module{files, symbols}
  ├─ graph.Build(modules)             # imports -> dependency graph
  ├─ summarizer.SummarizeAll(modules) # LLM call per module (parallel, bounded)
