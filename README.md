@@ -134,12 +134,14 @@ codelens [flags]
 
 Flags:
   --full              Force full re-index, ignore cache
-  --model string      LLM model (overrides global config)
-  --provider string   anthropic | openrouter | openai (overrides global config)
+  --provider string   anthropic | openrouter | openai (overrides config)
+  --model string      LLM model (overrides config)
+  --api-key string    LLM API key (overrides config and env vars)
   --output string     Output file path (default: "CODELENS.md")
   --exclude string    Comma-separated glob patterns to exclude
                       (default: "vendor,node_modules,.git,testdata,build,target")
   --max-files int     Max files per module before truncating (default: 50)
+  --concurrency int   Max parallel LLM calls (default: 5)
   --verbose           Show detailed progress
   --help              Show help
 ```
@@ -160,24 +162,41 @@ so you don't repeat them in every repo.
 }
 ```
 
-On first run, if no global config exists, codelens prints setup
-instructions and exits:
+On first run, if no global config exists and no `--api-key` flag or
+env var is provided, codelens prints setup instructions and exits:
 
 ```
 $ codelens
-No configuration found. Create ~/.config/codelens/config.json:
+No configuration found. Either:
 
-  {
-    "provider": "anthropic",
-    "model": "claude-haiku-4-5-20251001",
-    "apiKey": "your-api-key-here"
-  }
+  1. Create ~/.config/codelens/config.json:
+     { "provider": "anthropic", "model": "claude-haiku-4-5-20251001", "apiKey": "your-key" }
+
+  2. Pass flags directly:
+     codelens --provider anthropic --api-key sk-ant-...
+
+  3. Set an environment variable:
+     export ANTHROPIC_API_KEY=sk-ant-...
 
 Supported providers: anthropic, openrouter, openai
 ```
 
+All LLM settings can be passed as CLI flags, which makes codelens
+usable in CI/CD workflows without any config file:
+
+```bash
+# GitHub Actions example — use a custom provider with a secret
+codelens --provider openrouter --model mistralai/mistral-large --api-key $OPENROUTER_API_KEY
+
+# Use a different model for a specific repo
+codelens --model claude-sonnet-4-20250514
+
+# Fully headless, no config file needed
+codelens --provider openai --model gpt-4o --api-key $OPENAI_API_KEY --output docs/CODELENS.md
+```
+
 Environment variables `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`,
-`OPENAI_API_KEY` override the apiKey in global config if set.
+`OPENAI_API_KEY` also override the apiKey in global config if set.
 
 ### Per-Repo Config: `.codelens.json` (optional)
 
@@ -196,11 +215,14 @@ API keys — those come from the global config.
 
 ### Config Precedence (highest wins)
 
-1. CLI flags
-2. Environment variables (API keys only)
+1. CLI flags (`--provider`, `--model`, `--api-key`, etc.)
+2. Environment variables (`ANTHROPIC_API_KEY`, etc.)
 3. Per-repo `.codelens.json`
 4. Global `~/.config/codelens/config.json`
 5. Built-in defaults
+
+No config file is required if all necessary values are passed via
+flags or env vars. This enables fully headless operation in CI/CD.
 
 ## State File
 

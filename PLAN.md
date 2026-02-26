@@ -39,7 +39,7 @@ Each package gets a minimal `.go` file with the package declaration.
 ### 1.2 — Global config (`~/.config/codelens/config.json`)
 - `loadGlobal()` reads from `~/.config/codelens/config.json`
 - Uses `os.UserConfigDir()` for platform-appropriate path (XDG on Linux, ~/Library/Application Support on macOS, %AppData% on Windows)
-- If file doesn't exist on first run: print setup instructions with example JSON and exit with clear error
+- If file doesn't exist AND no `--api-key` flag or env var: print setup instructions (config file, flags, env vars) and exit
 - Contains LLM provider, model, API key, concurrency
 
 ### 1.3 — Per-repo config (`.codelens.json`)
@@ -49,13 +49,15 @@ Each package gets a minimal `.go` file with the package declaration.
 - Can override: model, provider, output path, exclude patterns, maxFiles
 
 ### 1.4 — Config merging & precedence
-- `config.Load()` merges in order: defaults → global config → repo config → env vars (API key only) → CLI flags
-- CLI flags override everything
-- Unit tests: defaults only, global override, repo override, env var override, flag override, full merge chain
+- `config.Load()` merges in order: defaults → global config → repo config → env vars → CLI flags
+- CLI flags override everything — all LLM settings (`--provider`, `--model`, `--api-key`, `--concurrency`) are passable as flags
+- No config file required if flags/env vars provide all needed values (enables CI/CD headless mode)
+- Unit tests: defaults only, global override, repo override, env var override, flag override, full merge chain, headless mode (flags only, no config files)
 
 ### 1.5 — CLI entry point
 - `cmd/codelens/main.go` using `cobra` (or raw `flag` if simpler)
-- Parse flags, call `config.Load()`, then dispatch to the main pipeline
+- Parse flags including `--provider`, `--model`, `--api-key`, `--concurrency`
+- Call `config.Load()`, then dispatch to the main pipeline
 - Wire up `--help` with the flag descriptions from README
 
 **Deliverable**: `codelens --help` works, config loading from both global and repo configs is tested.
@@ -226,8 +228,8 @@ Each package gets a minimal `.go` file with the package declaration.
 - Clean non-verbose output matching the UX examples in README
 
 ### 7.3 — Error handling
-- No global config: print setup instructions with example JSON, exit
-- Missing API key: clear error message pointing to `~/.config/codelens/config.json`
+- No config and no flags/env: print setup instructions (config file, flags, or env vars) and exit
+- Missing API key: clear error message with all three options (config, flag, env var)
 - LLM API errors: retry with backoff (3 attempts), then fail gracefully
 - Parse errors: skip file, warn, continue
 - No git repo: warn, always do full index

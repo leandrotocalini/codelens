@@ -59,14 +59,16 @@ internal/output/markdown.go    — CODELENS.md assembly
 
 ## Configuration
 
-Two-level config system:
+Two-level config system + full CLI flag support:
 
 - **Global**: `~/.config/codelens/config.json` — LLM provider, model, API key. Created once per machine.
 - **Per-repo**: `.codelens.json` at repo root — repo-specific overrides (exclude patterns, output path, model). No API keys here.
 - **Env vars**: `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY` override the global config's `apiKey` field.
-- **CLI flags** override everything.
+- **CLI flags**: `--provider`, `--model`, `--api-key`, `--concurrency` override everything. Enables headless CI/CD usage with no config file.
 
 Precedence: CLI flags > env vars > per-repo config > global config > defaults.
+
+No config file is required if all values are passed via flags/env vars.
 
 ## Testing Strategy
 
