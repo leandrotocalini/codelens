@@ -131,6 +131,13 @@ func resolveImport(importPath, language string, knownModules map[string]bool) st
 				return mod
 			}
 		}
+	case "swift":
+		// For Swift, imports are module names (e.g. "Foundation", "MyModule")
+		for mod := range knownModules {
+			if mod == importPath {
+				return mod
+			}
+		}
 	}
 
 	return ""

@@ -32,6 +32,8 @@ func ResolveModules(repoRoot string, files []File) []Module {
 			modules = append(modules, resolveJavaModules(repoRoot, langFiles)...)
 		case "python":
 			modules = append(modules, resolvePythonModules(repoRoot, langFiles)...)
+		case "swift":
+			modules = append(modules, resolveSwiftModules(repoRoot, langFiles)...)
 		default:
 			// Go, TypeScript, JavaScript, Rust: group by directory
 			modules = append(modules, resolveDirectoryModules(langFiles)...)
@@ -153,6 +155,51 @@ func isJavaTestFile(path string) bool {
 		}
 	}
 	return false
+}
+
+// resolveSwiftModules groups Swift files into modules.
+// Swift projects typically use SPM (Sources/<Target>/) or Xcode project structure.
+// Falls back to directory-based grouping.
+func resolveSwiftModules(repoRoot string, files []File) []Module {
+	groups := make(map[string][]File)
+
+	for _, f := range files {
+		moduleName := resolveSwiftModuleName(f.Path)
+		groups[moduleName] = append(groups[moduleName], f)
+	}
+
+	var modules []Module
+	for name, modFiles := range groups {
+		modules = append(modules, Module{
+			Name:     name,
+			Language: "swift",
+			Files:    modFiles,
+		})
+	}
+	return modules
+}
+
+// resolveSwiftModuleName determines the module name for a Swift file.
+// Recognizes SPM layout (Sources/<Target>/), Xcode patterns, and falls back to directory.
+func resolveSwiftModuleName(path string) string {
+	parts := strings.Split(path, string(filepath.Separator))
+
+	// SPM layout: Sources/<TargetName>/...
+	for i, part := range parts {
+		if part == "Sources" && i+1 < len(parts) {
+			return parts[i+1]
+		}
+	}
+
+	// Tests layout: Tests/<TargetName>/...
+	for i, part := range parts {
+		if part == "Tests" && i+1 < len(parts) {
+			return parts[i+1]
+		}
+	}
+
+	// Fall back to directory
+	return filepath.Dir(path)
 }
 
 // resolvePythonModules groups Python files by package (directory with __init__.py)

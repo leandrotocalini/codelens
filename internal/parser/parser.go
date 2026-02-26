@@ -16,7 +16,8 @@ var extensionToLanguage = map[string]string{
 	".js":   "javascript",
 	".jsx":  "javascript",
 	".py":   "python",
-	".rs":   "rust",
+	".rs":    "rust",
+	".swift": "swift",
 }
 
 // Parse walks the repository, parses files, resolves modules, and returns
@@ -29,7 +30,8 @@ func Parse(repoRoot string, excludes []string) ([]Module, Stats, error) {
 
 	// Extract symbols from each file
 	for i := range files {
-		symbols, err := extractSymbols(files[i].Path, files[i].Language)
+		absPath := filepath.Join(repoRoot, files[i].Path)
+		symbols, err := extractSymbols(absPath, files[i].Language)
 		if err != nil {
 			// Skip files that can't be parsed
 			continue

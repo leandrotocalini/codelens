@@ -144,6 +144,42 @@ func TestParsePythonProject(t *testing.T) {
 	}
 }
 
+func TestParseSwiftProject(t *testing.T) {
+	repoRoot := filepath.Join(testdataDir(t), "swift-project")
+	modules, stats, err := Parse(repoRoot, []string{})
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+
+	if len(modules) == 0 {
+		t.Fatal("Parse() returned no modules")
+	}
+	if stats.TotalFiles == 0 {
+		t.Error("stats.TotalFiles = 0")
+	}
+
+	// Swift SPM layout should resolve to target names
+	moduleNames := make(map[string]bool)
+	for _, m := range modules {
+		moduleNames[m.Name] = true
+	}
+
+	if !moduleNames["MyApp"] {
+		t.Errorf("expected module MyApp, got modules: %v", moduleNames)
+	}
+	if !moduleNames["Networking"] {
+		t.Errorf("expected module Networking, got modules: %v", moduleNames)
+	}
+
+	// Should have exported types and functions
+	if stats.ExportedTypes == 0 {
+		t.Error("stats.ExportedTypes = 0")
+	}
+	if stats.ExportedFunctions == 0 {
+		t.Error("stats.ExportedFunctions = 0")
+	}
+}
+
 func TestShouldExclude(t *testing.T) {
 	tests := []struct {
 		name     string

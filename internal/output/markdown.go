@@ -132,6 +132,8 @@ func capitalize(s string) string {
 		return "Python"
 	case "rust":
 		return "Rust"
+	case "swift":
+		return "Swift"
 	default:
 		return strings.ToUpper(s[:1]) + s[1:]
 	}

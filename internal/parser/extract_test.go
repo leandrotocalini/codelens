@@ -158,6 +158,139 @@ func TestExtractPythonSymbols(t *testing.T) {
 	}
 }
 
+func TestExtractSwiftSymbols(t *testing.T) {
+	path := filepath.Join(testdataDir(t), "swift-project", "Sources", "MyApp", "App.swift")
+	symbols, err := extractSymbols(path, "swift")
+	if err != nil {
+		t.Fatalf("extractSymbols() error: %v", err)
+	}
+
+	if len(symbols) == 0 {
+		t.Fatal("no symbols extracted")
+	}
+
+	var (
+		hasClass    bool
+		hasStruct   bool
+		hasEnum     bool
+		hasProtocol bool
+		hasFunc     bool
+		hasInit     bool
+		hasImport   bool
+		hasPrivate  bool
+		hasTypealias bool
+	)
+	for _, s := range symbols {
+		switch {
+		case s.Kind == SymbolType && s.Name == "Application":
+			hasClass = true
+		case s.Kind == SymbolType && s.Name == "AppConfig":
+			hasStruct = true
+		case s.Kind == SymbolType && s.Name == "Environment":
+			hasEnum = true
+		case s.Kind == SymbolInterface && s.Name == "AppDelegate":
+			hasProtocol = true
+		case s.Kind == SymbolFunction && s.Name == "createApp":
+			hasFunc = true
+		case s.Kind == SymbolMethod && s.Name == "init":
+			hasInit = true
+		case s.Kind == SymbolImport:
+			hasImport = true
+		case s.Kind == SymbolFunction && s.Name == "cleanup" && !s.Exported:
+			hasPrivate = true
+		case s.Kind == SymbolType && s.Name == "CompletionHandler":
+			hasTypealias = true
+		}
+	}
+
+	if !hasClass {
+		t.Error("expected Application class")
+	}
+	if !hasStruct {
+		t.Error("expected AppConfig struct")
+	}
+	if !hasEnum {
+		t.Error("expected Environment enum")
+	}
+	if !hasProtocol {
+		t.Error("expected AppDelegate protocol")
+	}
+	if !hasFunc {
+		t.Error("expected createApp function")
+	}
+	if !hasInit {
+		t.Error("expected init method")
+	}
+	if !hasImport {
+		t.Error("expected imports")
+	}
+	if !hasPrivate {
+		t.Error("expected private cleanup function")
+	}
+	if !hasTypealias {
+		t.Error("expected CompletionHandler typealias")
+	}
+}
+
+func TestSwiftVisibility(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.swift")
+	content := `import UIKit
+
+public class PublicClass {}
+open class OpenClass {}
+class InternalClass {}
+private class PrivateClass {}
+fileprivate class FilePrivateClass {}
+
+public func publicFunc() {}
+func internalFunc() {}
+private func privateFunc() {}
+`
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	symbols, err := extractSymbols(path, "swift")
+	if err != nil {
+		t.Fatalf("extractSymbols() error: %v", err)
+	}
+
+	visibility := make(map[string]bool) // name -> exported
+	for _, s := range symbols {
+		if s.Kind != SymbolImport {
+			visibility[s.Name] = s.Exported
+		}
+	}
+
+	// public, open, internal (default) should be exported
+	if !visibility["PublicClass"] {
+		t.Error("PublicClass should be exported")
+	}
+	if !visibility["OpenClass"] {
+		t.Error("OpenClass should be exported")
+	}
+	if !visibility["InternalClass"] {
+		t.Error("InternalClass should be exported (internal = module-visible)")
+	}
+	// private, fileprivate should NOT be exported
+	if visibility["PrivateClass"] {
+		t.Error("PrivateClass should not be exported")
+	}
+	if visibility["FilePrivateClass"] {
+		t.Error("FilePrivateClass should not be exported")
+	}
+	if !visibility["publicFunc"] {
+		t.Error("publicFunc should be exported")
+	}
+	if !visibility["internalFunc"] {
+		t.Error("internalFunc should be exported (internal = default)")
+	}
+	if visibility["privateFunc"] {
+		t.Error("privateFunc should not be exported")
+	}
+}
+
 func TestIsGoExported(t *testing.T) {
 	tests := []struct {
 		name string
