@@ -37,6 +37,17 @@ var (
 	pyFuncRe   = regexp.MustCompile(`^(?:async\s+)?def\s+(\w+)\s*\(([^)]*)\)`)
 	pyClassRe  = regexp.MustCompile(`^class\s+(\w+)`)
 	pyImportRe = regexp.MustCompile(`^(?:from\s+([\w.]+)\s+)?import\s+(.+)`)
+
+	// Swift
+	swiftFuncRe      = regexp.MustCompile(`^\s*(?:public\s+|open\s+|internal\s+|fileprivate\s+|private\s+)?(?:static\s+|class\s+)?func\s+(\w+)`)
+	swiftClassRe     = regexp.MustCompile(`^\s*(?:public\s+|open\s+|internal\s+|fileprivate\s+|private\s+)?(?:final\s+)?class\s+(\w+)`)
+	swiftStructRe    = regexp.MustCompile(`^\s*(?:public\s+|open\s+|internal\s+|fileprivate\s+|private\s+)?struct\s+(\w+)`)
+	swiftEnumRe      = regexp.MustCompile(`^\s*(?:public\s+|open\s+|internal\s+|fileprivate\s+|private\s+)?enum\s+(\w+)`)
+	swiftProtocolRe  = regexp.MustCompile(`^\s*(?:public\s+|open\s+|internal\s+|fileprivate\s+|private\s+)?protocol\s+(\w+)`)
+	swiftImportRe    = regexp.MustCompile(`^import\s+(\w+)`)
+	swiftVarRe       = regexp.MustCompile(`^\s*(?:public\s+|open\s+|internal\s+|fileprivate\s+|private\s+)?(?:static\s+|class\s+)?(?:let|var)\s+(\w+)`)
+	swiftTypealiasRe = regexp.MustCompile(`^\s*(?:public\s+|open\s+|internal\s+|fileprivate\s+|private\s+)?typealias\s+(\w+)`)
+	swiftInitRe      = regexp.MustCompile(`^\s*(?:public\s+|open\s+|internal\s+|fileprivate\s+|private\s+)?(?:convenience\s+|required\s+)?init\s*\(`)
 )
 
 func extractSymbols(path, language string) ([]Symbol, error) {
@@ -68,6 +79,9 @@ func extractSymbols(path, language string) ([]Symbol, error) {
 			symbols = append(symbols, syms...)
 		case "python":
 			syms := extractPythonSymbols(trimmed, line, lineNum)
+			symbols = append(symbols, syms...)
+		case "swift":
+			syms := extractSwiftSymbols(trimmed, line, lineNum)
 			symbols = append(symbols, syms...)
 		}
 	}
@@ -377,6 +391,146 @@ func extractPythonSymbols(trimmed, line string, lineNum int) []Symbol {
 	}
 
 	return symbols
+}
+
+func extractSwiftSymbols(trimmed, line string, lineNum int) []Symbol {
+	var symbols []Symbol
+
+	// Import
+	if m := swiftImportRe.FindStringSubmatch(trimmed); m != nil {
+		symbols = append(symbols, Symbol{
+			Name:       m[1],
+			Kind:       SymbolImport,
+			ImportPath: m[1],
+			Line:       lineNum,
+			Language:   "swift",
+		})
+		return symbols
+	}
+
+	exported := isSwiftExported(trimmed)
+
+	// Protocol (check before class since "class func" could confuse class regex)
+	if m := swiftProtocolRe.FindStringSubmatch(trimmed); m != nil {
+		symbols = append(symbols, Symbol{
+			Name:      m[1],
+			Kind:      SymbolInterface,
+			Exported:  exported,
+			Signature: trimmed,
+			Line:      lineNum,
+			Language:  "swift",
+		})
+		return symbols
+	}
+
+	// Class
+	if m := swiftClassRe.FindStringSubmatch(trimmed); m != nil {
+		symbols = append(symbols, Symbol{
+			Name:      m[1],
+			Kind:      SymbolType,
+			Exported:  exported,
+			Signature: trimmed,
+			Line:      lineNum,
+			Language:  "swift",
+		})
+		return symbols
+	}
+
+	// Struct
+	if m := swiftStructRe.FindStringSubmatch(trimmed); m != nil {
+		symbols = append(symbols, Symbol{
+			Name:      m[1],
+			Kind:      SymbolType,
+			Exported:  exported,
+			Signature: trimmed,
+			Line:      lineNum,
+			Language:  "swift",
+		})
+		return symbols
+	}
+
+	// Enum
+	if m := swiftEnumRe.FindStringSubmatch(trimmed); m != nil {
+		symbols = append(symbols, Symbol{
+			Name:      m[1],
+			Kind:      SymbolType,
+			Exported:  exported,
+			Signature: trimmed,
+			Line:      lineNum,
+			Language:  "swift",
+		})
+		return symbols
+	}
+
+	// Typealias
+	if m := swiftTypealiasRe.FindStringSubmatch(trimmed); m != nil {
+		symbols = append(symbols, Symbol{
+			Name:      m[1],
+			Kind:      SymbolType,
+			Exported:  exported,
+			Signature: trimmed,
+			Line:      lineNum,
+			Language:  "swift",
+		})
+		return symbols
+	}
+
+	// Init
+	if swiftInitRe.MatchString(trimmed) {
+		symbols = append(symbols, Symbol{
+			Name:      "init",
+			Kind:      SymbolMethod,
+			Exported:  exported,
+			Signature: trimmed,
+			Line:      lineNum,
+			Language:  "swift",
+		})
+		return symbols
+	}
+
+	// Function / method
+	if m := swiftFuncRe.FindStringSubmatch(trimmed); m != nil {
+		symbols = append(symbols, Symbol{
+			Name:      m[1],
+			Kind:      SymbolFunction,
+			Exported:  exported,
+			Signature: trimmed,
+			Line:      lineNum,
+			Language:  "swift",
+		})
+		return symbols
+	}
+
+	// Properties (let/var at type level) — only top-level or explicitly access-controlled
+	if m := swiftVarRe.FindStringSubmatch(trimmed); m != nil {
+		// Only capture if it starts with an access modifier (indicates type-level)
+		if strings.HasPrefix(trimmed, "public ") || strings.HasPrefix(trimmed, "open ") ||
+			strings.HasPrefix(trimmed, "private ") || strings.HasPrefix(trimmed, "fileprivate ") ||
+			strings.HasPrefix(trimmed, "internal ") || strings.HasPrefix(trimmed, "static ") ||
+			strings.HasPrefix(trimmed, "let ") || strings.HasPrefix(trimmed, "var ") {
+			symbols = append(symbols, Symbol{
+				Name:      m[1],
+				Kind:      SymbolVariable,
+				Exported:  exported,
+				Signature: trimmed,
+				Line:      lineNum,
+				Language:  "swift",
+			})
+		}
+	}
+
+	return symbols
+}
+
+// isSwiftExported determines visibility of a Swift declaration.
+// In Swift, declarations without an access modifier default to `internal`
+// (visible within the module). `private` and `fileprivate` are not exported.
+func isSwiftExported(trimmed string) bool {
+	if strings.HasPrefix(trimmed, "private ") || strings.HasPrefix(trimmed, "fileprivate ") {
+		return false
+	}
+	// public, open, internal (default) are all module-visible
+	return true
 }
 
 func isGoExported(name string) bool {

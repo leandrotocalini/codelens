@@ -125,6 +125,61 @@ func TestJavaPathToPackage(t *testing.T) {
 	}
 }
 
+func TestResolveSwiftModuleName(t *testing.T) {
+	tests := []struct {
+		path string
+		want string
+	}{
+		{"Sources/MyApp/App.swift", "MyApp"},
+		{"Sources/Networking/Client.swift", "Networking"},
+		{"Tests/MyAppTests/AppTests.swift", "MyAppTests"},
+		{"lib/utils.swift", "lib"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			got := resolveSwiftModuleName(tt.path)
+			if got != tt.want {
+				t.Errorf("resolveSwiftModuleName(%q) = %q, want %q", tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResolveSwiftModules(t *testing.T) {
+	dir := t.TempDir()
+	files := []File{
+		{Path: "Sources/MyApp/App.swift", Language: "swift"},
+		{Path: "Sources/MyApp/Config.swift", Language: "swift"},
+		{Path: "Sources/Networking/Client.swift", Language: "swift"},
+		{Path: "Tests/MyAppTests/AppTests.swift", Language: "swift"},
+	}
+
+	modules := resolveSwiftModules(dir, files)
+	if len(modules) != 3 {
+		t.Errorf("got %d modules, want 3", len(modules))
+		for _, m := range modules {
+			t.Logf("  module: %s (%d files)", m.Name, len(m.Files))
+		}
+		return
+	}
+
+	moduleMap := make(map[string]int)
+	for _, m := range modules {
+		moduleMap[m.Name] = len(m.Files)
+	}
+
+	if moduleMap["MyApp"] != 2 {
+		t.Errorf("MyApp has %d files, want 2", moduleMap["MyApp"])
+	}
+	if moduleMap["Networking"] != 1 {
+		t.Errorf("Networking has %d files, want 1", moduleMap["Networking"])
+	}
+	if moduleMap["MyAppTests"] != 1 {
+		t.Errorf("MyAppTests has %d files, want 1", moduleMap["MyAppTests"])
+	}
+}
+
 func TestDetectJavaPackage(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "Test.java")

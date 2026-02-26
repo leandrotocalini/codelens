@@ -130,6 +130,7 @@ func TestMultiLanguagePipeline(t *testing.T) {
 		{"Java", "java-project", "java"},
 		{"TypeScript", "ts-project", "typescript"},
 		{"Python", "python-project", "python"},
+		{"Swift", "swift-project", "swift"},
 	}
 
 	for _, tc := range testCases {
