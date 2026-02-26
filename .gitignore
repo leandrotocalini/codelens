@@ -1,0 +1,24 @@
+# Binary
+codelens
+codelens.exe
+
+# State directory
+.codelens/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Go
+vendor/
+
+# Build
+build/
+dist/
