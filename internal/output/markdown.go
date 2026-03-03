@@ -11,7 +11,7 @@ import (
 )
 
 // Write generates the CODELENS.md file.
-func Write(path string, commitHash string, projectSummary string, modules []parser.Module, summaries map[string]string, g *graph.Graph, stats parser.Stats) error {
+func Write(path string, commitHash string, projectSummary string, modules []parser.Module, summaries map[string]string, g *graph.Graph, stats parser.Stats, cliReference string) error {
 	var sb strings.Builder
 
 	// Header
@@ -83,6 +83,12 @@ func Write(path string, commitHash string, projectSummary string, modules []pars
 	fmt.Fprintf(&sb, "| Exported functions | %d |\n", stats.ExportedFunctions)
 	fmt.Fprintf(&sb, "| Exported types | %d |\n", stats.ExportedTypes)
 	fmt.Fprintf(&sb, "| Indexed at | %s |\n", commitHash)
+
+	if strings.TrimSpace(cliReference) != "" {
+		sb.WriteString("\n\n")
+		sb.WriteString(strings.TrimSpace(cliReference))
+		sb.WriteString("\n")
+	}
 
 	return os.WriteFile(path, []byte(sb.String()), 0644)
 }

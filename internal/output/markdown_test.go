@@ -35,7 +35,7 @@ func TestWrite(t *testing.T) {
 		LanguageBreakdown: map[string]int{"go": 500},
 	}
 
-	err := Write(outputPath, "abc123d", "This is a test project.", modules, summaries, g, stats)
+	err := Write(outputPath, "abc123d", "This is a test project.", modules, summaries, g, stats, "")
 	if err != nil {
 		t.Fatalf("Write() error: %v", err)
 	}
@@ -95,12 +95,12 @@ func TestWriteIdempotent(t *testing.T) {
 	stats := parser.Stats{TotalPackages: 2, LanguageBreakdown: map[string]int{"go": 100}}
 
 	// Write twice
-	if err := Write(outputPath, "abc", "Project.", modules, summaries, g, stats); err != nil {
+	if err := Write(outputPath, "abc", "Project.", modules, summaries, g, stats, ""); err != nil {
 		t.Fatal(err)
 	}
 	content1, _ := os.ReadFile(outputPath)
 
-	if err := Write(outputPath, "abc", "Project.", modules, summaries, g, stats); err != nil {
+	if err := Write(outputPath, "abc", "Project.", modules, summaries, g, stats, ""); err != nil {
 		t.Fatal(err)
 	}
 	content2, _ := os.ReadFile(outputPath)
@@ -141,5 +141,36 @@ func TestFormatNumber(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("formatNumber(%d) = %q, want %q", tt.n, got, tt.want)
 		}
+	}
+}
+
+func TestWriteIncludesCLIReference(t *testing.T) {
+	dir := t.TempDir()
+	outputPath := filepath.Join(dir, "CODELENS.md")
+
+	err := Write(
+		outputPath,
+		"abc123",
+		"Project summary.",
+		[]parser.Module{{Name: "pkg/a", Language: "go"}},
+		map[string]string{"pkg/a": "Summary"},
+		graph.Build([]parser.Module{{Name: "pkg/a", Language: "go"}}),
+		parser.Stats{TotalPackages: 1, LanguageBreakdown: map[string]int{"go": 10}},
+		"## CLI Commands\n\n### `codelens`\n\n```text\nusage\n```",
+	)
+	if err != nil {
+		t.Fatalf("Write() error: %v", err)
+	}
+
+	content, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("ReadFile() error: %v", err)
+	}
+	text := string(content)
+	if !strings.Contains(text, "## CLI Commands") {
+		t.Fatalf("expected CLI Commands section in output: %s", text)
+	}
+	if !strings.Contains(text, "### `codelens`") {
+		t.Fatalf("expected codelens command in output: %s", text)
 	}
 }

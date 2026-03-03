@@ -69,7 +69,7 @@ func TestFullPipeline(t *testing.T) {
 	outputDir := t.TempDir()
 	outputPath := filepath.Join(outputDir, "CODELENS.md")
 
-	err = output.Write(outputPath, "test123", projectSummary, modules, summaries, g, stats)
+	err = output.Write(outputPath, "test123", projectSummary, modules, summaries, g, stats, "")
 	if err != nil {
 		t.Fatalf("Write() error: %v", err)
 	}
