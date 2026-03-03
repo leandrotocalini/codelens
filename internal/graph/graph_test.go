@@ -109,6 +109,9 @@ func TestRender(t *testing.T) {
 	if !strings.Contains(output, "internal/config") {
 		t.Error("render output should contain internal/config")
 	}
+	if !strings.Contains(output, "├── ") && !strings.Contains(output, "└── ") {
+		t.Fatalf("render output should contain tree connectors, got:\n%s", output)
+	}
 }
 
 func TestRenderCycle(t *testing.T) {

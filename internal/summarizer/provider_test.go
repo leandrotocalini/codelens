@@ -265,3 +265,20 @@ func TestTransportFallbackParsesSSEWithoutWaitingForConnectionClose(t *testing.T
 		t.Fatalf("text = %q, want streamed result", text)
 	}
 }
+
+func TestNormalizeFromMapAvoidsDuplicatedText(t *testing.T) {
+	raw := map[string]any{
+		"output_text": "Repeated block",
+		"output": []any{
+			map[string]any{
+				"content": []any{
+					map[string]any{"text": "Repeated block"},
+				},
+			},
+		},
+	}
+	got := normalizeFromMap(raw)
+	if got.Text != "Repeated block" {
+		t.Fatalf("Text = %q, want single non-duplicated block", got.Text)
+	}
+}

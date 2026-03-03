@@ -56,8 +56,17 @@ func TestWrite(t *testing.T) {
 	if !strings.Contains(text, "This is a test project.") {
 		t.Error("output should contain project summary")
 	}
+	if !strings.Contains(text, "### Project Summary") {
+		t.Error("output should contain rigid project summary section")
+	}
+	if !strings.Contains(text, "### Libraries & Frameworks") {
+		t.Error("output should contain rigid libraries section")
+	}
 
 	// Check module map
+	if !strings.Contains(text, "Runtime Module Map") {
+		t.Error("output should contain runtime module map section")
+	}
 	if !strings.Contains(text, "### internal/handler") {
 		t.Error("output should contain handler module")
 	}
@@ -172,5 +181,89 @@ func TestWriteIncludesCLIReference(t *testing.T) {
 	}
 	if !strings.Contains(text, "### `codelens`") {
 		t.Fatalf("expected codelens command in output: %s", text)
+	}
+}
+
+func TestNormalizeSummaryFixesDuplicatedContent(t *testing.T) {
+	duplicated := "**Responsibility**: A.\n**Key types**: T\n**Key functions**: F\n**Responsibility**: A.\n**Key types**: T\n**Key functions**: F"
+	got := normalizeModuleSummary(duplicated)
+	if strings.Count(got, "**Responsibility**:") != 1 {
+		t.Fatalf("expected one Responsibility block, got: %s", got)
+	}
+	if strings.Count(got, "**Key functions**:") != 1 {
+		t.Fatalf("expected one Key functions block, got: %s", got)
+	}
+}
+
+func TestNormalizeProjectSummaryUsesRigidSectionsAndDedupes(t *testing.T) {
+	raw := `### System PurposeThis project does X.
+
+### Critical Runtime PathPath details.
+
+### System Purpose
+This project does X.
+`
+	got := normalizeProjectSummary(raw)
+	if strings.Count(got, "### Project Summary") != 1 {
+		t.Fatalf("expected one Project Summary section, got: %s", got)
+	}
+	for _, heading := range rigidProjectSummarySections() {
+		if !strings.Contains(got, "### "+heading) {
+			t.Fatalf("missing rigid heading %q in output: %s", heading, got)
+		}
+	}
+	if strings.Count(got, "This project does X.") != 1 {
+		t.Fatalf("expected deduped content, got: %s", got)
+	}
+	if !strings.Contains(got, "### Code Architecture") {
+		t.Fatalf("expected rigid headings after normalization, got: %s", got)
+	}
+}
+
+func TestWriteSeparatesTestModules(t *testing.T) {
+	dir := t.TempDir()
+	outputPath := filepath.Join(dir, "CODELENS.md")
+
+	modules := []parser.Module{
+		{
+			Name:     "internal/app",
+			Language: "go",
+			Files: []parser.File{
+				{Path: "internal/app/app.go"},
+			},
+		},
+		{
+			Name:     "internal/app_test",
+			Language: "go",
+			Files: []parser.File{
+				{Path: "internal/app/app_test.go"},
+			},
+		},
+	}
+	summaries := map[string]string{
+		"internal/app":      "**Responsibility**: runtime",
+		"internal/app_test": "**Responsibility**: tests",
+	}
+	stats := parser.Stats{
+		TotalPackages:     2,
+		TotalFiles:        2,
+		TotalLOC:          20,
+		LanguageBreakdown: map[string]int{"go": 20},
+	}
+
+	if err := Write(outputPath, "abc123", "summary", modules, summaries, graph.Build(modules), stats, ""); err != nil {
+		t.Fatalf("Write() error: %v", err)
+	}
+
+	content, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("ReadFile() error: %v", err)
+	}
+	text := string(content)
+	if !strings.Contains(text, "## Runtime Module Map") {
+		t.Fatalf("missing runtime module section: %s", text)
+	}
+	if !strings.Contains(text, "## Test & Support Modules") {
+		t.Fatalf("missing test/support module section: %s", text)
 	}
 }

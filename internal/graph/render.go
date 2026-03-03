@@ -20,20 +20,19 @@ func Render(g *Graph) string {
 		if i > 0 {
 			sb.WriteString("\n")
 		}
-		renderNode(&sb, g, entry, "", true, visited)
+		renderNode(&sb, g, entry, "", true, true, visited)
 	}
 
 	return sb.String()
 }
 
-func renderNode(sb *strings.Builder, g *Graph, node, prefix string, isLast bool, visited map[string]bool) {
+func renderNode(sb *strings.Builder, g *Graph, node, prefix string, isLast bool, isRoot bool, visited map[string]bool) {
 	connector := "├── "
 	if isLast {
 		connector = "└── "
 	}
 
-	if prefix == "" {
-		// Root node
+	if isRoot {
 		sb.WriteString(node)
 	} else {
 		sb.WriteString(prefix)
@@ -52,7 +51,7 @@ func renderNode(sb *strings.Builder, g *Graph, node, prefix string, isLast bool,
 	deps := g.Dependencies[node]
 
 	childPrefix := prefix
-	if prefix != "" {
+	if !isRoot {
 		if isLast {
 			childPrefix += "    "
 		} else {
@@ -62,7 +61,7 @@ func renderNode(sb *strings.Builder, g *Graph, node, prefix string, isLast bool,
 
 	for i, dep := range deps {
 		last := i == len(deps)-1
-		renderNode(sb, g, dep, childPrefix, last, visited)
+		renderNode(sb, g, dep, childPrefix, last, false, visited)
 	}
 
 	delete(visited, node)

@@ -87,8 +87,8 @@ func TestFullPipeline(t *testing.T) {
 	if !strings.Contains(text, "Project Summary") {
 		t.Error("output missing project summary section")
 	}
-	if !strings.Contains(text, "Module Map") {
-		t.Error("output missing module map section")
+	if !strings.Contains(text, "Runtime Module Map") {
+		t.Error("output missing runtime module map section")
 	}
 	if !strings.Contains(text, "Stats") {
 		t.Error("output missing stats section")

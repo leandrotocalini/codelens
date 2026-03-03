@@ -60,6 +60,21 @@ func TestProjectPrompt(t *testing.T) {
 	if !strings.Contains(prompt, "handler -> model") {
 		t.Error("prompt should contain dep graph")
 	}
+	if !strings.Contains(prompt, "### Project Summary") {
+		t.Error("prompt should request project summary section")
+	}
+	if !strings.Contains(prompt, "### Libraries & Frameworks") {
+		t.Error("prompt should request libraries/frameworks section")
+	}
+	if !strings.Contains(prompt, "### External Dependencies") {
+		t.Error("prompt should request external dependencies section")
+	}
+	if !strings.Contains(prompt, "### Code Architecture") {
+		t.Error("prompt should request code architecture section")
+	}
+	if !strings.Contains(prompt, "### Critical Paths & Change Impact") {
+		t.Error("prompt should request critical paths section")
+	}
 }
 
 func TestFormatModuleSymbols(t *testing.T) {
@@ -96,5 +111,28 @@ func TestFormatModuleSymbolsTruncation(t *testing.T) {
 
 	if !strings.Contains(output, "and 10 more") {
 		t.Error("output should mention truncated files")
+	}
+}
+
+func TestModulePromptTestHeavyModule(t *testing.T) {
+	module := parser.Module{
+		Name:     "internal/parser",
+		Language: "go",
+		Files: []parser.File{
+			{
+				Path: "internal/parser/parser_test.go",
+				Symbols: []parser.Symbol{
+					{Name: "TestParse", Kind: parser.SymbolFunction, Exported: true, Signature: "func TestParse(t *testing.T)"},
+				},
+			},
+		},
+	}
+
+	prompt := ModulePrompt(module)
+	if !strings.Contains(prompt, "ModuleClass: test") {
+		t.Error("test-heavy module should be marked as test")
+	}
+	if !strings.Contains(prompt, "**Change impact**:") {
+		t.Error("prompt should request change impact in response format")
 	}
 }

@@ -3,6 +3,7 @@ package output
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -20,14 +21,11 @@ func Write(path string, commitHash string, projectSummary string, modules []pars
 	// Project Summary
 	sb.WriteString("## Project Summary\n\n")
 	if projectSummary != "" {
-		sb.WriteString(projectSummary)
+		sb.WriteString(normalizeProjectSummary(projectSummary))
 	} else {
 		sb.WriteString("*No project summary available.*")
 	}
 	sb.WriteString("\n\n")
-
-	// Module Map
-	sb.WriteString("## Module Map\n\n")
 
 	// Sort modules by name
 	sortedModules := make([]parser.Module, len(modules))
@@ -35,28 +33,15 @@ func Write(path string, commitHash string, projectSummary string, modules []pars
 	sort.Slice(sortedModules, func(i, j int) bool {
 		return sortedModules[i].Name < sortedModules[j].Name
 	})
+	runtimeModules, testModules := splitModulesByRelevance(sortedModules)
 
-	for _, m := range sortedModules {
-		fmt.Fprintf(&sb, "### %s\n\n", m.Name)
+	// Runtime Module Map
+	sb.WriteString("## Runtime Module Map\n\n")
+	writeModuleList(&sb, runtimeModules, summaries, g)
 
-		if summary, ok := summaries[m.Name]; ok && summary != "" {
-			sb.WriteString(summary)
-			sb.WriteString("\n")
-		}
-
-		// Dependencies
-		if g != nil {
-			deps := g.DependenciesOf(m.Name)
-			if len(deps) > 0 {
-				fmt.Fprintf(&sb, "**Depends on**: %s\n", strings.Join(deps, ", "))
-			}
-			usedBy := g.DependentsOf(m.Name)
-			if len(usedBy) > 0 {
-				fmt.Fprintf(&sb, "**Used by**: %s\n", strings.Join(usedBy, ", "))
-			}
-		}
-
-		sb.WriteString("\n")
+	if len(testModules) > 0 {
+		sb.WriteString("## Test & Support Modules\n\n")
+		writeModuleList(&sb, testModules, summaries, g)
 	}
 
 	// Dependency Graph
@@ -91,6 +76,30 @@ func Write(path string, commitHash string, projectSummary string, modules []pars
 	}
 
 	return os.WriteFile(path, []byte(sb.String()), 0644)
+}
+
+func writeModuleList(sb *strings.Builder, modules []parser.Module, summaries map[string]string, g *graph.Graph) {
+	for _, m := range modules {
+		fmt.Fprintf(sb, "### %s\n\n", m.Name)
+
+		if summary, ok := summaries[m.Name]; ok && summary != "" {
+			sb.WriteString(normalizeModuleSummary(summary))
+			sb.WriteString("\n")
+		}
+
+		if g != nil {
+			deps := g.DependenciesOf(m.Name)
+			if len(deps) > 0 {
+				fmt.Fprintf(sb, "**Depends on**: %s\n", strings.Join(deps, ", "))
+			}
+			usedBy := g.DependentsOf(m.Name)
+			if len(usedBy) > 0 {
+				fmt.Fprintf(sb, "**Used by**: %s\n", strings.Join(usedBy, ", "))
+			}
+		}
+
+		sb.WriteString("\n")
+	}
 }
 
 func formatLanguages(breakdown map[string]int, totalLOC int) string {
@@ -150,4 +159,291 @@ func formatNumber(n int) string {
 		return fmt.Sprintf("%d", n)
 	}
 	return fmt.Sprintf("%d,%03d", n/1000, n%1000)
+}
+
+func splitModulesByRelevance(modules []parser.Module) (runtimeModules, testModules []parser.Module) {
+	for _, m := range modules {
+		if isLikelyTestModule(m) {
+			testModules = append(testModules, m)
+			continue
+		}
+		runtimeModules = append(runtimeModules, m)
+	}
+	return runtimeModules, testModules
+}
+
+func isLikelyTestModule(module parser.Module) bool {
+	if strings.Contains(strings.ToLower(module.Name), "test") || strings.Contains(strings.ToLower(module.Name), "spec") {
+		return true
+	}
+	if len(module.Files) == 0 {
+		return false
+	}
+	testCount := 0
+	for _, f := range module.Files {
+		if isLikelyTestPath(f.Path) {
+			testCount++
+		}
+	}
+	return testCount == len(module.Files)
+}
+
+func isLikelyTestPath(path string) bool {
+	lower := strings.ToLower(filepath.ToSlash(path))
+	base := filepath.Base(lower)
+	if strings.HasSuffix(base, "_test.go") ||
+		strings.Contains(base, ".test.") ||
+		strings.Contains(base, ".spec.") ||
+		strings.HasSuffix(base, "test.java") ||
+		strings.HasSuffix(base, "tests.swift") {
+		return true
+	}
+	parts := strings.Split(lower, "/")
+	for _, p := range parts {
+		switch p {
+		case "test", "tests", "__tests__", "spec", "specs", "mocks", "fixtures":
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeProjectSummary(text string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return text
+	}
+	text = collapseDuplicatedTail(text)
+	text = normalizeProjectSummaryHeadings(text)
+
+	sections := extractSummarySections(text)
+	if sections["Project Summary"] == "" {
+		sections["Project Summary"] = strings.TrimSpace(text)
+	}
+
+	var sb strings.Builder
+	for i, section := range rigidProjectSummarySections() {
+		if i > 0 {
+			sb.WriteString("\n\n")
+		}
+		content := strings.TrimSpace(sections[section])
+		if content == "" {
+			content = "Not explicitly identified."
+		}
+		content = dedupeParagraphs(content)
+		sb.WriteString("### ")
+		sb.WriteString(section)
+		sb.WriteString("\n")
+		sb.WriteString(content)
+	}
+	return strings.TrimSpace(sb.String())
+}
+
+func normalizeModuleSummary(text string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return text
+	}
+	text = collapseDuplicatedTail(text)
+	text = strings.ReplaceAll(text, "**Responsibility**:", "\n**Responsibility**:")
+	text = strings.ReplaceAll(text, "**Key types**:", "\n**Key types**:")
+	text = strings.ReplaceAll(text, "**Key functions**:", "\n**Key functions**:")
+	text = strings.ReplaceAll(text, "**Change impact**:", "\n**Change impact**:")
+	text = strings.TrimSpace(text)
+	text = strings.ReplaceAll(text, "\n\n\n", "\n\n")
+	return text
+}
+
+func collapseDuplicatedTail(text string) string {
+	trimmed := strings.TrimSpace(text)
+	if trimmed == "" {
+		return trimmed
+	}
+
+	marker := "**Responsibility**:"
+	if strings.Count(trimmed, marker) > 1 {
+		first := strings.Index(trimmed, marker)
+		secondRel := strings.Index(trimmed[first+len(marker):], marker)
+		if secondRel >= 0 {
+			second := first + len(marker) + secondRel
+			prefix := strings.TrimSpace(trimmed[:second])
+			duplicate := strings.TrimSpace(trimmed[second:])
+			if duplicate == prefix || strings.HasPrefix(duplicate, prefix[:min(40, len(prefix))]) {
+				return prefix
+			}
+		}
+	}
+
+	anchorLen := min(100, len(trimmed)/2)
+	if anchorLen < 20 {
+		anchorLen = len(trimmed) / 2
+	}
+	if anchorLen <= 0 {
+		return trimmed
+	}
+
+	anchor := trimmed[:anchorLen]
+	idx := strings.Index(trimmed[anchorLen:], anchor)
+	if idx < 0 {
+		return trimmed
+	}
+	startDup := anchorLen + idx
+	duplicate := strings.TrimSpace(trimmed[startDup:])
+	prefix := strings.TrimSpace(trimmed[:startDup])
+	if duplicate == "" || prefix == "" {
+		return trimmed
+	}
+	if strings.HasPrefix(duplicate, prefix[:min(80, len(prefix))]) {
+		return prefix
+	}
+	return trimmed
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func rigidProjectSummarySections() []string {
+	return []string{
+		"Project Summary",
+		"Libraries & Frameworks",
+		"External Dependencies",
+		"Code Architecture",
+		"Critical Paths & Change Impact",
+	}
+}
+
+func extractSummarySections(text string) map[string]string {
+	sections := make(map[string]string)
+	blocks := make(map[string][]string)
+	current := ""
+	var preamble strings.Builder
+
+	for _, line := range strings.Split(text, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "###") {
+			heading := strings.TrimSpace(strings.TrimPrefix(trimmed, "###"))
+			current = canonicalSummarySection(heading)
+			blocks[current] = append(blocks[current], "")
+			continue
+		}
+		if current == "" {
+			if preamble.Len() > 0 {
+				preamble.WriteString("\n")
+			}
+			preamble.WriteString(line)
+			continue
+		}
+
+		currentBlocks := blocks[current]
+		if len(currentBlocks) == 0 {
+			currentBlocks = append(currentBlocks, "")
+		}
+		last := len(currentBlocks) - 1
+		if currentBlocks[last] != "" {
+			currentBlocks[last] += "\n"
+		}
+		currentBlocks[last] += line
+		blocks[current] = currentBlocks
+	}
+
+	for section, sectionBlocks := range blocks {
+		for i := len(sectionBlocks) - 1; i >= 0; i-- {
+			candidate := strings.TrimSpace(collapseDuplicatedTail(sectionBlocks[i]))
+			if candidate == "" {
+				continue
+			}
+			sections[section] = candidate
+			break
+		}
+	}
+
+	if strings.TrimSpace(sections["Project Summary"]) == "" && strings.TrimSpace(preamble.String()) != "" {
+		sections["Project Summary"] = strings.TrimSpace(preamble.String())
+	}
+	for k, v := range sections {
+		sections[k] = strings.TrimSpace(collapseDuplicatedTail(v))
+	}
+	return sections
+}
+
+func canonicalSummarySection(heading string) string {
+	key := strings.ToLower(strings.TrimSpace(heading))
+	key = strings.TrimSuffix(key, ":")
+	aliases := map[string]string{
+		"project summary":                "Project Summary",
+		"system purpose":                 "Project Summary",
+		"libraries":                      "Libraries & Frameworks",
+		"libraries & frameworks":         "Libraries & Frameworks",
+		"main technologies":              "Libraries & Frameworks",
+		"external dependencies":          "External Dependencies",
+		"external contracts":             "External Dependencies",
+		"code architecture":              "Code Architecture",
+		"critical runtime path":          "Code Architecture",
+		"critical paths & change impact": "Critical Paths & Change Impact",
+		"change impact guide":            "Critical Paths & Change Impact",
+	}
+	if v, ok := aliases[key]; ok {
+		return v
+	}
+	return "Project Summary"
+}
+
+func dedupeParagraphs(text string) string {
+	parts := strings.Split(text, "\n\n")
+	seen := make(map[string]bool)
+	var kept []string
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if seen[p] {
+			continue
+		}
+		seen[p] = true
+		kept = append(kept, p)
+	}
+	return strings.Join(kept, "\n\n")
+}
+
+func normalizeProjectSummaryHeadings(text string) string {
+	headings := []string{
+		"### Project Summary",
+		"### Libraries & Frameworks",
+		"### External Dependencies",
+		"### Code Architecture",
+		"### Critical Paths & Change Impact",
+		"### System Purpose",
+		"### Critical Runtime Path",
+		"### External Contracts",
+		"### Change Impact Guide",
+	}
+
+	for _, heading := range headings {
+		start := 0
+		for {
+			idx := strings.Index(text[start:], heading)
+			if idx < 0 {
+				break
+			}
+			pos := start + idx
+			// Ensure heading starts on a new line.
+			if pos > 0 && text[pos-1] != '\n' {
+				text = text[:pos] + "\n" + text[pos:]
+				pos++
+			}
+			end := pos + len(heading)
+			// Ensure heading line ends with newline.
+			if end < len(text) && text[end] != '\n' {
+				text = text[:end] + "\n" + text[end:]
+				end++
+			}
+			start = end
+		}
+	}
+	return text
 }

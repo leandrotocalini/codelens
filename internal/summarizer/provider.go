@@ -355,8 +355,29 @@ func parseCodexSSEStream(r io.Reader) (normalizedResponse, error) {
 		if err := json.Unmarshal([]byte(payload), &raw); err != nil {
 			continue
 		}
+
+		if eventType, ok := raw["type"].(string); ok {
+			switch eventType {
+			case "response.output_text.delta", "output_text.delta":
+				if delta, ok := raw["delta"].(string); ok && delta != "" {
+					agg.Text += delta
+				}
+				continue
+			case "response.completed", "response.output_text.done":
+				current := normalizeFromMap(raw)
+				agg.Text = mergeText(agg.Text, current.Text)
+				if len(current.ToolCalls) > 0 {
+					agg.ToolCalls = append(agg.ToolCalls, current.ToolCalls...)
+				}
+				if current.Usage != nil {
+					agg.Usage = current.Usage
+				}
+				continue
+			}
+		}
+
 		current := normalizeFromMap(raw)
-		agg.Text += current.Text
+		agg.Text = mergeText(agg.Text, current.Text)
 		if len(current.ToolCalls) > 0 {
 			agg.ToolCalls = append(agg.ToolCalls, current.ToolCalls...)
 		}
@@ -372,11 +393,13 @@ func parseCodexSSEStream(r io.Reader) (normalizedResponse, error) {
 
 func normalizeFromMap(raw map[string]any) normalizedResponse {
 	var out normalizedResponse
+	var pieces []string
+
 	if text, ok := raw["output_text"].(string); ok {
-		out.Text = text
+		pieces = append(pieces, text)
 	}
 	if delta, ok := raw["delta"].(string); ok {
-		out.Text += delta
+		pieces = append(pieces, delta)
 	}
 	if usage, ok := raw["usage"].(map[string]any); ok {
 		out.Usage = usage
@@ -386,12 +409,13 @@ func normalizeFromMap(raw map[string]any) normalizedResponse {
 			out.Usage = usage
 		}
 		if combined := extractTextFromResponseOutput(response["output"]); combined != "" {
-			out.Text += combined
+			pieces = append(pieces, combined)
 		}
 	}
 	if output := extractTextFromResponseOutput(raw["output"]); output != "" {
-		out.Text += output
+		pieces = append(pieces, output)
 	}
+	out.Text = mergePieces(pieces)
 	if toolCalls := extractToolCalls(raw); len(toolCalls) > 0 {
 		out.ToolCalls = toolCalls
 	}
@@ -456,6 +480,38 @@ func sanitizeAndCompact(body []byte) string {
 		return msg[:1200] + "...(truncated)"
 	}
 	return msg
+}
+
+func mergePieces(parts []string) string {
+	merged := ""
+	for _, part := range parts {
+		if strings.TrimSpace(part) == "" {
+			continue
+		}
+		merged = mergeText(merged, part)
+	}
+	return merged
+}
+
+func mergeText(current, incoming string) string {
+	if incoming == "" {
+		return current
+	}
+	incomingTrim := strings.TrimSpace(incoming)
+	currentTrim := strings.TrimSpace(current)
+	if incomingTrim == "" {
+		return current + incoming
+	}
+	if current == "" {
+		return incoming
+	}
+	if strings.Contains(currentTrim, incomingTrim) {
+		return current
+	}
+	if strings.Contains(incomingTrim, currentTrim) {
+		return incoming
+	}
+	return current + incoming
 }
 
 func (c *CodexSummarizer) debugf(format string, args ...any) {
